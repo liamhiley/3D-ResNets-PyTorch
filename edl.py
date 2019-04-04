@@ -1,4 +1,6 @@
 import torch
+import torch.nn as nn
+import numpy as np
 
 def relu_evidence(logits):
     return torch.nn.ReLU(logits)
@@ -18,16 +20,18 @@ def KL(alpha):
 
     return kl
 
+class AdaptedMSELoss(nn._Loss):
+    def __init__(self, weight=None, size_average=None, reduce=None, reduction='mean'):
+        super(AdaptedMSELoss, self).__init__(weight, size_average, reduce, reduction)
+    def forward(self, p, alpha, global_step, annealing_step):
+        S = alpha.sum(dim=1, keep_dims=True)
+        E = alpha - 1
+        m = alpha / S
 
-def mse_loss(p, alpha, global_step, annealing_step):
-    S = alpha.sum(dim=1, keep_dims=True)
-    E = alpha - 1
-    m = alpha/ S
+        A = ((p - m) ** 2).sum(dim=1, keep_dims=True)
+        B = (alpha * (S - alpha) / (S * S * (S + 1))).sum(dim=1, keep_dims=True)
 
-    A = ((p-m)**2).sum(dim=1, keep_dims=True)
-    B = (alpha*(S-alpha)/(S*S*(S+1))).sum(dim=1, keep_dims=True)
-
-    annealing_coef = torch.min(1.0, (global_step/annealing_step).float())
-    alp = E*(1-p) + 1
-    C = annealing_coef * KL(alp)
-    return (A + B) + C
+        annealing_coef = torch.min(1.0, (global_step / annealing_step).float())
+        alp = E * (1 - p) + 1
+        C = annealing_coef * KL(alp)
+        return (A + B) + C
